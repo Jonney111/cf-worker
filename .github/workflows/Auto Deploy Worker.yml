@@ -9,9 +9,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      # 1️⃣ Checkout 仓库
+      # 1️⃣ Checkout fork repository
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       # 2️⃣ Fetch upstream JS
       - name: Fetch upstream JS
@@ -32,15 +34,22 @@ jobs:
       - name: Install Wrangler
         run: npm install -g wrangler
 
-      # 5️⃣ Deploy Worker using CLOUDFLARE_API_TOKEN
+      # 5️⃣ Deploy Worker (v4+, no-bundle for obfuscated JS)
       - name: Deploy Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
         run: wrangler deploy worker.js --no-bundle
 
-      # 6️⃣ Copy worker.js to public for Pages
-      - name: Copy to public folder
+      # 6️⃣ Configure push using PAT (write permission for fork)
+      - name: Configure push with PAT
         run: |
+          git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/Jonney111/cf-vless.git
+
+      # 7️⃣ Copy worker.js to public and push
+      - name: Copy to public folder and push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           mkdir -p public
           cp worker.js public/worker.js
           git add public/worker.js
