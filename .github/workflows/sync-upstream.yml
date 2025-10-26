@@ -3,7 +3,7 @@ name: Sync single file from upstream
 on:
   schedule:
     - cron: "0 */6 * * *"  # 每 6 小时同步一次
-  workflow_dispatch:       # 手动触发
+  workflow_dispatch:       # 支持手动触发
 
 jobs:
   sync-json:
@@ -33,22 +33,26 @@ jobs:
         run: |
           git checkout -B main  # 改成 master 如果你的 fork 默认分支是 master
 
-      # 5️⃣ List upstream files (debug)
+      # 5️⃣ Configure Git user for commit
+      - name: Configure Git user
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+
+      # 6️⃣ List upstream files (debug)
       - name: List upstream files
         run: |
           git ls-tree -r upstream/${{ steps.branch.outputs.upstream_branch }}
 
-      # 6️⃣ Attempt to fetch file (safe)
+      # 7️⃣ Attempt to fetch file (safe)
       - name: Fetch upstream file
         run: |
           mkdir -p tmp_upstream
-          # 尝试拉取文件，如果失败不会报错
           git --work-tree=tmp_upstream checkout upstream/${{ steps.branch.outputs.upstream_branch }} -- "少年你相信光吗" || echo "Upstream file not found"
-          # 查看 tmp_upstream 文件
           ls tmp_upstream
 
-      # 7️⃣ Copy and rename if exists
-      - name: Copy and rename
+      # 8️⃣ Copy, rename, and commit if exists
+      - name: Copy and commit file
         run: |
           if [ -f tmp_upstream/少年你相信光吗 ]; then
             cp tmp_upstream/少年你相信光吗 ./shaonian.json
@@ -58,11 +62,11 @@ jobs:
             echo "File not found, skipping commit"
           fi
 
-      # 8️⃣ Configure push with PAT
+      # 9️⃣ Configure push using PAT
       - name: Configure push with PAT
         run: |
           git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/Jonney111/cf-vless.git
 
-      # 9️⃣ Push changes
+      # 🔟 Push changes
       - name: Push changes
         run: git push origin main
