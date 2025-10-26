@@ -32,11 +32,15 @@ jobs:
       - name: Install Wrangler
         run: npm install -g wrangler
 
-      # 5️⃣ Publish Worker using CLOUDFLARE_API_TOKEN
-      - name: Publish Worker
+      # 5️⃣ Deploy Worker using CLOUDFLARE_API_TOKEN
+      - name: Deploy Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-        run: wrangler publish
+        run: |
+          # 如果有 wrangler.toml 配置
+          wrangler deploy
+          # 如果没有 wrangler.toml，可以改成：
+          # wrangler deploy worker.js --name my-worker
 
       # 6️⃣ Copy worker.js to public for Pages
       - name: Copy to public folder
