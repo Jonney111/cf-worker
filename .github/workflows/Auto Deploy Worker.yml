@@ -1,57 +1,95 @@
-name: Auto Deploy Worker
+name: Auto Deploy Worker + Pages
 
 on:
   schedule:
     - cron: "0 */6 * * *"  # 每 6 小时自动同步一次
-  workflow_dispatch:       # 支持手动触发
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      # 1️⃣ Checkout fork repository
-      - name: Checkout repository
+      # 1️⃣ Checkout fork
+      - name: Checkout fork
         uses: actions/checkout@v4
         with:
-          persist-credentials: true
+          persist-credentials: false
 
-      # 2️⃣ Fetch upstream JS
-      - name: Fetch upstream JS
+      # 2️⃣ Add upstream and fetch
+      - name: Add upstream
         run: |
-          mkdir -p tmp_upstream
           git remote add upstream https://github.com/byJoey/cfnew.git || true
           git fetch upstream
-          git --work-tree=tmp_upstream checkout upstream/main -- "少年你相信光吗" || echo "File not found"
-          cp tmp_upstream/少年你相信光吗 ./worker.js
 
-      # 3️⃣ Setup Node.js
+      # 3️⃣ Determine upstream default branch
+      - name: Get upstream default branch
+        id: branch
+        run: |
+          UPSTREAM_BRANCH=$(git remote show upstream | grep "HEAD branch" | cut -d ":" -f2 | tr -d ' ')
+          echo "upstream_branch=$UPSTREAM_BRANCH" >> $GITHUB_OUTPUT
+
+      # 4️⃣ Checkout fork branch
+      - name: Checkout fork branch
+        run: git checkout -B main  # 如果默认分支是 master，请改成 master
+
+      # 5️⃣ Configure Git user
+      - name: Configure Git user
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+
+      # 6️⃣ Fetch upstream file
+      - name: Fetch upstream file
+        run: |
+          mkdir -p tmp_upstream
+          git --work-tree=tmp_upstream checkout upstream/${{ steps.branch.outputs.upstream_branch }} -- "少年你相信光吗" || echo "Upstream file not found"
+
+      # 7️⃣ Copy and commit shaonian.js if changed
+      - name: Copy and commit shaonian.js
+        run: |
+          if [ -f tmp_upstream/少年你相信光吗 ]; then
+            cp tmp_upstream/少年你相信光吗 ./shaonian.js
+            if git diff --quiet shaonian.js; then
+              echo "No changes in shaonian.js"
+            else
+              git add shaonian.js
+              git commit -m "Update shaonian.js from upstream"
+            fi
+          fi
+
+      # 8️⃣ Copy to public folder for Pages
+      - name: Copy to public folder
+        run: |
+          mkdir -p public
+          cp shaonian.js public/shaonian.js
+          if git diff --quiet public/shaonian.js; then
+            echo "No changes in public/shaonian.js"
+          else
+            git add public/shaonian.js
+            git commit -m "Update public/shaonian.js for Pages"
+          fi
+
+      # 9️⃣ Configure push with PAT
+      - name: Configure push with PAT
+        run: |
+          git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/Jonney111/cf-vless.git
+
+      # 🔟 Push changes to fork
+      - name: Push changes
+        run: git push origin main || echo "No changes to push"
+
+      # 1️⃣1️⃣ Setup Node.js
       - name: Setup Node
         uses: actions/setup-node@v3
         with:
           node-version: "20"
 
-      # 4️⃣ Install Wrangler
+      # 1️⃣2️⃣ Install Wrangler
       - name: Install Wrangler
         run: npm install -g wrangler
 
-      # 5️⃣ Deploy Worker (v4+, no-bundle for obfuscated JS)
+      # 1️⃣3️⃣ Deploy Worker
       - name: Deploy Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
         run: wrangler deploy worker.js --no-bundle
-
-      # 6️⃣ Configure push using PAT (write permission for fork)
-      - name: Configure push with PAT
-        run: |
-          git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/Jonney111/cf-vless.git
-
-      # 7️⃣ Copy worker.js to public and push
-      - name: Copy to public folder and push
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          mkdir -p public
-          cp worker.js public/worker.js
-          git add public/worker.js
-          git commit -m "Update public/worker.js for Pages" || echo "No changes"
-          git push origin main || echo "No changes to push"
