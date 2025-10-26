@@ -36,11 +36,7 @@ jobs:
       - name: Deploy Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-        run: |
-          # 如果有 wrangler.toml 配置
-          wrangler deploy
-          # 如果没有 wrangler.toml，可以改成：
-          # wrangler deploy worker.js --name my-worker
+        run: wrangler deploy
 
       # 6️⃣ Copy worker.js to public for Pages
       - name: Copy to public folder
