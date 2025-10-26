@@ -15,132 +15,127 @@ jobs:
           persist-credentials: false
           # fetch full refs for safety
           fetch-depth: 0
+      - name: Add upstream and fetch
+        run: |
+          git remote add upstream https://github.com/byJoey/cfnew.git
+          git fetch upstream --no-tags --prune
 
-- name: Add upstream and fetch
-    run: |
-      git remote add upstream https://github.com/byJoey/cfnew.git
-      git fetch upstream --no-tags --prune
+      - name: Detect upstream default branch
+        id: upbranch
+        run: |
+          UPSTREAM_BRANCH=$(git remote show upstream \vert{} grep "HEAD branch" \vert{} cut -d ":" -f2 \vert{} tr -d ' ')
+          echo "upstream_branch=$UPSTREAM_BRANCH" >> $GITHUB_OUTPUT
 
-  - name: Detect upstream default branch
-    id: upbranch
-    run: |
-      UPSTREAM_BRANCH=$(git remote show upstream \vert{} grep "HEAD branch" \vert{} cut -d ":" -f2 \vert{} tr -d ' ')
-      echo "upstream_branch=$UPSTREAM_BRANCH" >> $GITHUB_OUTPUT
-
-  - name: Detect fork (origin) default branch and ensure branch checked out
-    id: forkbranch
-    run: \vert{}
-      CURBR=$(git symbolic-ref --short HEAD 2>/dev/null || true)
-      if [ -z "$CURBR" ]; then
-        CURBR=$(git remote show origin | grep "HEAD branch" | cut -d ":" -f2 | tr -d ' ')
-      fi
-      if [ -z "$CURBR" ]; then
-        CURBR=main
-      fi
-      echo "fork_branch=$CURBR" >> $GITHUB_OUTPUT
-      git checkout -B "$CURBR"
-
-  - name: Prepare variables
-    id: vars
-    run: |
-      TARGET_PATH="少年你相信光吗"     # <- 根据实际调整，例如 "snippets/少年你相信光吗"
-      DEST_NAME="shaonian.json"
-      echo "target_path=$TARGET_PATH" >> $GITHUB_OUTPUT
-      echo "dest_name=$DEST_NAME" >> $GITHUB_OUTPUT
-
-  - name: Get upstream file blob id
-    id: upblob
-    run: |
-      TARGET="${{ steps.vars.outputs.target_path }}"
-      UBR="${{ steps.upbranch.outputs.upstream_branch }}"
-      LSOUT=$(git ls-tree upstream/"$UBR" -- "$TARGET" 2>/dev/null \vert{}\vert{} true)
-      if [ -z "$LSOUT" ]; then
-        echo "upstream_blob=" >> $GITHUB_OUTPUT
-        echo "found=false" >> $GITHUB_OUTPUT
-      else
-        UPB=$(echo "$LSOUT" | awk '{print \$3}')
-        echo "upstream_blob=$UPB" >> $GITHUB_OUTPUT
-        echo "found=true" >> $GITHUB_OUTPUT
-      fi
-
-  - name: Compare blob with local file
-    id: compare
-    run: \vert{}
-      DEST="${{ steps.vars.outputs.dest_name }}"
-      UPB="${{ steps.upblob.outputs.upstream_blob }}"
-      if [ "${{ steps.upblob.outputs.found }}" != "true" ]; then
-        echo "upstream_found=false" >> $GITHUB_OUTPUT
-        echo "same=false" >> $GITHUB_OUTPUT
-        echo "local_blob=" >> $GITHUB_OUTPUT
-        exit 0
-      fi
-      if [ -f "$DEST" ]; then
-        LOCAL_BLOB=$(git hash-object --no-filters "$DEST")
-      else
-        LOCAL_BLOB=""
-      fi
-      echo "local_blob=$LOCAL_BLOB" >> $GITHUB_OUTPUT
-      if [ "$LOCAL_BLOB" = "$UPB" ]; then
-        echo "same=true" >> $GITHUB_OUTPUT
-      else
-        echo "same=false" >> $GITHUB_OUTPUT
-      fi
-
-  - name: Export upstream file if changed
-    run: |
-      # 直接使用 steps 输出的值赋给 shell 变量，避免在 bash 中出现 ${ { ... } } 这类错误
-      if [ "${{ steps.upblob.outputs.found }}" != "true" ]; then
-        echo "Upstream file not found; nothing to do."
-        exit 0
-      fi
-      if [ "${{ steps.compare.outputs.same }}" = "true" ]; then
-        echo "Upstream file content equals local file; no update needed."
-        exit 0
-      fi
-
-      TARGET="${{ steps.vars.outputs.target_path }}"
-      DEST="${{ steps.vars.outputs.dest_name }}"
-
-      mkdir -p tmp_upstream
-      git --work-tree=tmp_upstream checkout upstream/${{ steps.upbranch.outputs.upstream_branch }} -- "$TARGET" \vert{}\vert{} {
-        echo "Failed to checkout upstream file"
-        exit 1
-      }
-      SRC_PATH="tmp_upstream/$TARGET"
-      if [ ! -f "$SRC_PATH" ]; then
-        echo "Exported file not found: $SRC_PATH"
-        exit 1
-      fi
-      cp "$SRC_PATH" "$DEST"
-
-      git config user.name "github-actions[bot]"
-      git config user.email "github-actions[bot]@users.noreply.github.com"
-      git add "$DEST"
-      if git diff --cached --quiet --exit-code; then
-        echo "No staged changes"
-      else
-        # 这里用的是 shell 变量 TARGET 和 DEST，避免非法的 ${ { ... } } 写法
-        git commit -m "Sync $TARGET -> $DEST from upstream"
-      fi
-
-  - name: Configure push with PAT and push if commit exists
-    run: |
-      git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${{ github.repository }}.git
-      BR="${{ steps.forkbranch.outputs.fork_branch }}"
-      # 如果本地有比 origin/BR 更新的 commit 才 push
-      # （origin/BR 可能不存在第一次推送，这里尝试直接 push）
-      if git rev-parse --verify --quiet HEAD >/dev/null; then
-        # 检查是否有未推送的提交（如果 origin/BR 不存在会标记为有更新）
-        if git show-ref --verify --quiet refs/remotes/origin/"$BR"; then
-          if git log origin/"$BR"..HEAD --oneline \vert{} grep . >/dev/null 2>&1; then
-            git push origin "$BR"
-          else
-            echo "No new commits to push"
+      - name: Detect fork (origin) default branch and ensure branch checked out
+        id: forkbranch
+        run: \vert{}
+          CURBR=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+          if [ -z "$CURBR" ]; then
+            CURBR=$(git remote show origin | grep "HEAD branch" | cut -d ":" -f2 | tr -d ' ')
           fi
-        else
-          echo "origin/$BR not found; pushing branch"
-          git push origin "$BR"
-        fi
-      else
-        echo "No commits in repo to consider"
-      fi
+          if [ -z "$CURBR" ]; then
+            CURBR=main
+          fi
+          echo "fork_branch=$CURBR" >> $GITHUB_OUTPUT
+          git checkout -B "$CURBR"
+
+      - name: Prepare variables
+        id: vars
+        run: |
+          # 请根据实际调整：上游文件在仓库中的相对路径（可含子目录）
+          TARGET_PATH="少年你相信光吗"
+          # 在 fork 中保存的文件名
+          DEST_NAME="shaonian.json"
+          echo "target_path=$TARGET_PATH" >> $GITHUB_OUTPUT
+          echo "dest_name=$DEST_NAME" >> $GITHUB_OUTPUT
+
+      - name: Get upstream file blob id
+        id: upblob
+        run: |
+          TARGET="${{ steps.vars.outputs.target_path }}"
+          UBR="${{ steps.upbranch.outputs.upstream_branch }}"
+          LSOUT=$(git ls-tree upstream/"$UBR" -- "$TARGET" 2>/dev/null \vert{}\vert{} true)
+          if [ -z "$LSOUT" ]; then
+            echo "upstream_blob=" >> $GITHUB_OUTPUT
+            echo "found=false" >> $GITHUB_OUTPUT
+          else
+            UPB=$(echo "$LSOUT" | awk '{print \$3}')
+            echo "upstream_blob=$UPB" >> $GITHUB_OUTPUT
+            echo "found=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compare blob with local file
+        id: compare
+        run: \vert{}
+          DEST="${{ steps.vars.outputs.dest_name }}"
+          UPB="${{ steps.upblob.outputs.upstream_blob }}"
+          if [ "${{ steps.upblob.outputs.found }}" != "true" ]; then
+            echo "upstream_found=false" >> $GITHUB_OUTPUT
+            echo "same=false" >> $GITHUB_OUTPUT
+            echo "local_blob=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          if [ -f "$DEST" ]; then
+            LOCAL_BLOB=$(git hash-object --no-filters "$DEST")
+          else
+            LOCAL_BLOB=""
+          fi
+          echo "local_blob=$LOCAL_BLOB" >> $GITHUB_OUTPUT
+          if [ "$LOCAL_BLOB" = "$UPB" ]; then
+            echo "same=true" >> $GITHUB_OUTPUT
+          else
+            echo "same=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Export upstream file if changed
+        run: |
+          if [ "${{ steps.upblob.outputs.found }}" != "true" ]; then
+            echo "Upstream file not found; nothing to do."
+            exit 0
+          fi
+          if [ "${{ steps.compare.outputs.same }}" = "true" ]; then
+            echo "Upstream file content equals local file; no update needed."
+            exit 0
+          fi
+
+          TARGET="${{ steps.vars.outputs.target_path }}"
+          DEST="${{ steps.vars.outputs.dest_name }}"
+
+          mkdir -p tmp_upstream
+          git --work-tree=tmp_upstream checkout upstream/${{ steps.upbranch.outputs.upstream_branch }} -- "$TARGET" || {
+            echo "Failed to checkout upstream file"; exit 1;
+          }
+          SRC_PATH="tmp_upstream/$TARGET"
+          if [ ! -f "$SRC_PATH" ]; then
+            echo "Exported file not found: $SRC_PATH"; exit 1;
+          fi
+          cp "$SRC_PATH" "$DEST"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$DEST"
+          if git diff --cached --quiet --exit-code; then
+            echo "No staged changes"
+          else
+            git commit -m "Sync $TARGET -> $DEST from upstream"
+          fi
+
+      - name: Configure push with PAT and push if commit exists
+        run: |
+          git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${{ github.repository }}.git
+          BR="${{ steps.forkbranch.outputs.fork_branch }}"
+          # 如果 origin/BR 存在则比较是否有未推送的 commit；不存在则直接 push（第一次推送）
+          if git rev-parse --verify --quiet HEAD >/dev/null; then
+            if git show-ref --verify --quiet refs/remotes/origin/"$BR"; then
+              if git log origin/"$BR"..HEAD --oneline \vert{} grep . >/dev/null 2>&1; then
+                git push origin "$BR"
+              else
+                echo "No new commits to push"
+              fi
+            else
+              echo "origin/$BR not found; pushing branch"
+              git push origin "$BR"
+            fi
+          else
+            echo "No commits in repo to consider"
+          fi
