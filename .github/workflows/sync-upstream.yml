@@ -13,36 +13,49 @@ jobs:
       - name: Checkout fork
         uses: actions/checkout@v4
         with:
-          persist-credentials: false  # 手动配置 token
+          persist-credentials: false
 
-      # 2️⃣ 配置远程仓库
+      # 2️⃣ Add upstream and fetch
       - name: Add upstream
         run: |
           git remote add upstream https://github.com/byJoey/cfnew.git
           git fetch upstream
 
-      # 3️⃣ 获取上游默认分支
-      - name: Determine upstream default branch
+      # 3️⃣ Determine upstream default branch
+      - name: Get upstream default branch
         id: branch
         run: |
           UPSTREAM_BRANCH=$(git remote show upstream | grep "HEAD branch" | cut -d ":" -f2 | tr -d ' ')
           echo "upstream_branch=$UPSTREAM_BRANCH" >> $GITHUB_OUTPUT
 
-      # 4️⃣ 拉取单个文件并重命名
-      - name: Fetch and rename file
+      # 4️⃣ Checkout fork default branch
+      - name: Checkout fork branch
         run: |
-          mkdir tmp_upstream
+          git checkout -B main  # 如果你的 fork 默认分支是 main, 改成 master 如果是 master
+
+      # 5️⃣ Fetch file from upstream
+      - name: Fetch upstream file
+        run: |
+          mkdir -p tmp_upstream
+          # 确认上游文件完整路径
+          echo "Upstream file path:"
+          git ls-tree -r upstream/${{ steps.branch.outputs.upstream_branch }} | grep "少年你相信光吗"
           git --work-tree=tmp_upstream checkout upstream/${{ steps.branch.outputs.upstream_branch }} -- "少年你相信光吗"
-          # 重命名为 URL 安全的名字
+          ls tmp_upstream
+          cat tmp_upstream/少年你相信光吗 || echo "File not found"
+
+      # 6️⃣ Copy and rename to URL-safe name
+      - name: Rename file
+        run: |
           cp tmp_upstream/少年你相信光吗 ./shaonian.json
           git add shaonian.json
           git commit -m "Update shaonian.json from upstream" || echo "No changes to commit"
 
-      # 5️⃣ 配置 push 使用 PAT（避免 403）
+      # 7️⃣ Configure push using PAT
       - name: Configure push with PAT
         run: |
           git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/Jonney111/cf-vless.git
 
-      # 6️⃣ Push 文件到 fork
+      # 8️⃣ Push changes
       - name: Push changes
-        run: git push origin ${{ steps.branch.outputs.upstream_branch }}
+        run: git push origin main
