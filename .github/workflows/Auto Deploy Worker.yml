@@ -40,19 +40,3 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
         run: |
           wrangler deploy worker.js --no-bundle
-
-      # 6️⃣ Configure push using PAT for fork
-      - name: Configure push with PAT
-        run: |
-          git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/Jonney111/cf-vless.git
-
-      # 7️⃣ Copy worker.js to public folder and push
-      - name: Copy to public folder and push
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          mkdir -p public
-          cp worker.js public/worker.js
-          git add public/worker.js
-          git commit -m "Update public/worker.js for Pages" || echo "No changes"
-          git push origin main || echo "No changes to push"
