@@ -1,61 +1,141 @@
-name: Sync single file from upstream
+name: Sync single file from upstream (detect branch & blob-compare)
 
 on:
   schedule:
-    - cron: "0 */6 * * *"  # 每 6 小时同步一次
-  workflow_dispatch:       # 支持手动触发
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
 
 jobs:
-  sync-json:
+  sync-file:
     runs-on: ubuntu-latest
     steps:
-      # 1️⃣ Checkout fork
       - name: Checkout fork
         uses: actions/checkout@v4
         with:
           persist-credentials: false
+          # fetch full refs for safety
+          fetch-depth: 0
 
-      # 2️⃣ Add upstream and fetch
-      - name: Add upstream
+      - name: Add upstream and fetch
         run: |
           git remote add upstream https://github.com/byJoey/cfnew.git
-          git fetch upstream
+          git fetch upstream --no-tags --prune
 
-      # 3️⃣ Determine upstream default branch
-      - name: Get upstream default branch
-        id: branch
+      - name: Detect upstream default branch
+        id: upbranch
         run: |
           UPSTREAM_BRANCH=$(git remote show upstream | grep "HEAD branch" | cut -d ":" -f2 | tr -d ' ')
           echo "upstream_branch=$UPSTREAM_BRANCH" >> $GITHUB_OUTPUT
 
-      # 4️⃣ Checkout fork default branch
-      - name: Checkout fork branch
+      - name: Detect fork (origin) default branch and ensure branch checked out
+        id: forkbranch
         run: |
-          git checkout -B main  # 如果你的 fork 默认分支是 main, 改成 master 如果是 master
+          # Try to get current branch (may be detached); fallback to origin HEAD branch
+          CURBR=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+          if [ -z "$CURBR" ]; then
+            CURBR=$(git remote show origin | grep "HEAD branch" | cut -d ":" -f2 | tr -d ' ')
+          fi
+          # fallback default
+          if [ -z "$CURBR" ]; then
+            CURBR=main
+          fi
+          echo "fork_branch=$CURBR" >> $GITHUB_OUTPUT
+          # create/checkout branch so we can commit
+          git checkout -B "$CURBR"
 
-      # 5️⃣ Fetch file from upstream
-      - name: Fetch upstream file
+      - name: Prepare variables
+        id: vars
         run: |
+          # 上游文件在仓库中的相对路径（根据实际改）
+          TARGET_PATH="少年你相信光吗"
+          # 本地目标文件名（保存后在 fork 中的名称）
+          DEST_NAME="shaonian.json"
+          echo "target_path=$TARGET_PATH" >> $GITHUB_OUTPUT
+          echo "dest_name=$DEST_NAME" >> $GITHUB_OUTPUT
+
+      - name: Get upstream file blob id
+        id: upblob
+        run: |
+          TARGET="${{ steps.vars.outputs.target_path }}"
+          UBR="${{ steps.upbranch.outputs.upstream_branch }}"
+          # 尝试获取该文件在 upstream 分支上的 blob id
+          # 输出格式: "100644 blob <sha>\t<path>"
+          LSOUT=$(git ls-tree upstream/"$UBR" -- "$TARGET" 2>/dev/null || true)
+          if [ -z "$LSOUT" ]; then
+            echo "upstream_blob="
+            echo "found=false" >> $GITHUB_OUTPUT
+          else
+            UPB=$(echo "$LSOUT" | awk '{print $3}')
+            echo "upstream_blob=$UPB" >> $GITHUB_OUTPUT
+            echo "found=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compare blob with local file
+        id: compare
+        run: |
+          DEST="${{ steps.vars.outputs.dest_name }}"
+          UPB="${{ steps.upblob.outputs.upstream_blob }}"
+          if [ "${{ steps.upblob.outputs.found }}" != "true" ]; then
+            echo "upstream_found=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          # 如果本地已有文件，计算其 blob id；否则为空
+          if [ -f "$DEST" ]; then
+            LOCAL_BLOB=$(git hash-object --no-filters "$DEST")
+          else
+            LOCAL_BLOB=""
+          fi
+          echo "local_blob=$LOCAL_BLOB" >> $GITHUB_OUTPUT
+          if [ "$LOCAL_BLOB" = "$UPB" ]; then
+            echo "same=true" >> $GITHUB_OUTPUT
+          else
+            echo "same=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Export upstream file if changed
+        run: |
+          if [ "${{ steps.upblob.outputs.found }}" != "true" ]; then
+            echo "Upstream file not found; nothing to do."
+            exit 0
+          fi
+          if [ "${{ steps.compare.outputs.same }}" = "true" ]; then
+            echo "Upstream file content equals local file; no update needed."
+            exit 0
+          fi
+          # 导出上游文件到临时目录并复制为目标文件名
           mkdir -p tmp_upstream
-          # 确认上游文件完整路径
-          echo "Upstream file path:"
-          git ls-tree -r upstream/${{ steps.branch.outputs.upstream_branch }} | grep "少年你相信光吗"
-          git --work-tree=tmp_upstream checkout upstream/${{ steps.branch.outputs.upstream_branch }} -- "少年你相信光吗"
-          ls tmp_upstream
-          cat tmp_upstream/少年你相信光吗 || echo "File not found"
+          git --work-tree=tmp_upstream checkout upstream/${{ steps.upbranch.outputs.upstream_branch }} -- "${{ steps.vars.outputs.target_path }}" || {
+            echo "Failed to checkout upstream file"; exit 1;
+          }
+          # 确保文件存在
+          SRC_PATH="tmp_upstream/${{ steps.vars.outputs.target_path }}"
+          if [ ! -f "$SRC_PATH" ]; then
+            echo "Exported file not found: $SRC_PATH"
+            exit 1
+          fi
+          cp "$SRC_PATH" "${{ steps.vars.outputs.dest_name }}"
+          # git add & commit if changed
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${{ steps.vars.outputs.dest_name }}"
+          if git diff --cached --quiet --exit-code; then
+            echo "No staged changes"
+          else
+            git commit -m "Sync ${ { steps.vars.outputs.target_path } } -> ${ { steps.vars.outputs.dest_name } } from upstream"
+          fi
 
-      # 6️⃣ Copy and rename to URL-safe name
-      - name: Rename file
+      - name: Configure push with PAT and push if commit exists
         run: |
-          cp tmp_upstream/少年你相信光吗 ./shaonian.json
-          git add shaonian.json
-          git commit -m "Update shaonian.json from upstream" || echo "No changes to commit"
-
-      # 7️⃣ Configure push using PAT
-      - name: Configure push with PAT
-        run: |
-          git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/Jonney111/cf-vless.git
-
-      # 8️⃣ Push changes
-      - name: Push changes
-        run: git push origin main
+          # 使用 PAT 推送（确保 secrets.PAT_TOKEN 已设置）
+          git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${{ github.repository }}.git
+          # 只有在有 commit 时才 push
+          if git rev-parse --verify --quiet HEAD >/dev/null; then
+            # 检查是否有本地未推送的提交
+            if git log origin/${{ steps.forkbranch.outputs.fork_branch }}..HEAD --oneline | grep . >/dev/null 2>&1; then
+              git push origin "${{ steps.forkbranch.outputs.fork_branch }}"
+            else
+              echo "No new commits to push"
+            fi
+          else
+            echo "No commits in repo to consider"
+          fi
