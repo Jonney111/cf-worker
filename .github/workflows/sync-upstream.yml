@@ -1,0 +1,41 @@
+name: Sync single file from upstream with URL-safe name
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"  # 每 6 小时同步一次
+  workflow_dispatch:       # 手动触发
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout your fork
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Add upstream repository
+        run: |
+          git remote add upstream https://github.com/byJoey/cfnew.git
+          git fetch upstream
+
+      - name: Determine upstream default branch
+        id: branch
+        run: |
+          UPSTREAM_BRANCH=$(git remote show upstream | grep "HEAD branch" | cut -d ":" -f2 | tr -d ' ')
+          echo "upstream_branch=$UPSTREAM_BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Fetch and rename the single file
+        run: |
+          mkdir tmp_upstream
+          git --work-tree=tmp_upstream checkout upstream/${{ steps.branch.outputs.upstream_branch }} -- "少年你相信光吗"
+          # 重命名为 URL 安全名字
+          cp tmp_upstream/少年你相信光吗 ./shaonian.json
+          git add shaonian.json
+          git commit -m "Update shaonian.json from upstream" || echo "No changes to commit"
+
+      - name: Push changes to fork
+        run: |
+          git push origin ${{ steps.branch.outputs.upstream_branch }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
