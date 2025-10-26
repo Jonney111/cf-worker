@@ -3,3 +3,7 @@ main = "worker.js"             # Worker 类型
 account_id = "b2e44eed415aae2b4017c796fe0064af" # Cloudflare 账户 ID
 compatibility_date = "2025-10-26"
 
+# 绑定 KV
+[[kv_namespaces]]
+binding = "C"          # Worker 中使用的变量名
+id = "my-work"  # KV 的 ID（可以在 Cloudflare Dashboard KV 页面找到）
