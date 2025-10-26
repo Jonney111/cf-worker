@@ -3,7 +3,7 @@ name: Sync single file from upstream
 on:
   schedule:
     - cron: "0 */6 * * *"  # 每 6 小时同步一次
-  workflow_dispatch:       # 支持手动触发
+  workflow_dispatch:       # 手动触发
 
 jobs:
   sync-json:
@@ -51,8 +51,8 @@ jobs:
           git --work-tree=tmp_upstream checkout upstream/${{ steps.branch.outputs.upstream_branch }} -- "少年你相信光吗" || echo "Upstream file not found"
           ls tmp_upstream
 
-      # 8️⃣ Copy, rename, and commit if exists
-      - name: Copy and commit file
+      # 8️⃣ Copy and commit shaonian.json
+      - name: Copy and commit shaonian.json
         run: |
           if [ -f tmp_upstream/少年你相信光吗 ]; then
             cp tmp_upstream/少年你相信光吗 ./shaonian.json
@@ -62,11 +62,19 @@ jobs:
             echo "File not found, skipping commit"
           fi
 
-      # 9️⃣ Configure push using PAT
+      # 9️⃣ Copy to public folder for Pages
+      - name: Copy to public folder
+        run: |
+          mkdir -p public
+          cp shaonian.json public/shaonian.json
+          git add public/shaonian.json
+          git commit -m "Update public/shaonian.json for Pages" || echo "No changes"
+
+      # 1️⃣0️⃣ Configure push using PAT
       - name: Configure push with PAT
         run: |
           git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/Jonney111/cf-vless.git
 
-      # 🔟 Push changes
+      # 1️⃣1️⃣ Push all changes
       - name: Push changes
         run: git push origin main
