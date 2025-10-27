@@ -2,6 +2,7 @@ name = "my-worker"              # Worker 名称
 main = "worker.js"             # Worker 类型
 account_id = "b2e44eed415aae2b4017c796fe0064af"
 compatibility_date = "2025-10-26"
+workers_dev = false                # 禁用默认 workers.dev 域名
 # 绑定 KV
 [[kv_namespaces]]
 binding = "C"          # Worker 中使用的变量名
