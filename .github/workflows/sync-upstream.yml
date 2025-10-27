@@ -57,7 +57,7 @@ jobs:
           if [ -f tmp_upstream/少年你相信光吗 ]; then
             cp tmp_upstream/少年你相信光吗 ./shaonian.js
             git add shaonian.js
-            git commit -m "Update shaonian.json from upstream" || echo "No changes to commit"
+            git commit -m "Update shaonian.js from upstream" || echo "No changes to commit"
           else
             echo "File not found, skipping commit"
           fi
