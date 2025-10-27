@@ -52,7 +52,7 @@ jobs:
           ls tmp_upstream
 
       # 8️⃣ Copy and commit shaonian.json
-      - name: Copy and commit shaonian.json
+      - name: Copy and commit shaonian.js
         run: |
           if [ -f tmp_upstream/少年你相信光吗 ]; then
             cp tmp_upstream/少年你相信光吗 ./shaonian.js
