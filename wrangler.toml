@@ -6,7 +6,7 @@ workers_dev = false                # 禁用默认 workers.dev 域名
 # 绑定 KV
 [[kv_namespaces]]
 binding = "C"          # Worker 中使用的变量名
-id = "34e478c0eb3040538030a2c7a297f1d8"  # KV 的 ID（可以在 Cloudflare Dashboard KV 页面找到）
+id = "1501451948ed42ed985da649eedd2aea"  # KV 的 ID（可以在 Cloudflare Dashboard KV 页面找到）
 # 普通环境变量
 [vars]
 u = "613ffdc2-7887-481e-a9c0-622f598169b8"
