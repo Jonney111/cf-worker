@@ -21,8 +21,8 @@ jobs:
           mkdir -p tmp_upstream
           git remote add upstream https://github.com/byJoey/cfnew.git || true
           git fetch upstream
-          git --work-tree=tmp_upstream checkout upstream/main -- "少年你相信光吗" || echo "File not found"
-          cp tmp_upstream/少年你相信光吗 ./worker.js
+          git --work-tree=tmp_upstream checkout upstream/main -- $(printf %s "少年你相信光吗") || echo "File not found"
+          mv "tmp_upstream/少年你相信光吗" worker.js || echo "Rename failed or file missing"
 
       # 3️⃣ Setup Node.js
       - name: Setup Node
