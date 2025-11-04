@@ -66,9 +66,9 @@ jobs:
       - name: Copy to public folder
         run: |
           mkdir -p public
-          cp shaonian.js public/shaonian.js
-          git add public/shaonian.js
-          git commit -m "Update public/shaonian.json for Pages" || echo "No changes"
+          cp shaonian.js public/_worker.js
+          git add public/_worker.js
+          git commit -m "Update public/_worker.js for Pages" || echo "No changes"
 
       # 1️⃣0️⃣ Configure push using PAT
       - name: Configure push with PAT
