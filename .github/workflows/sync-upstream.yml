@@ -73,7 +73,7 @@ jobs:
       # 1️⃣0️⃣ Configure push using PAT
       - name: Configure push with PAT
         run: |
-          git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/Jonney111/cf-vless.git
+          git remote set-url origin https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/Jonney111/cf-worker.git
 
       # 1️⃣1️⃣ Push all changes
       - name: Push changes
